@@ -13,12 +13,13 @@ params:
   - name: github
     url: https://github.com/goomon
   cover:
-    linkFullImages: true
-  
+    linkFullImages: false
+
   ShowBreadCrumbs: true
   ShowReadingTime: true
   ShowShareButtons: true
   ShowPostNavLinks: true
+  ShowToc: true
 
 menu:
  main:
