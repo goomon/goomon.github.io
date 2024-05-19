@@ -1,9 +1,7 @@
 ---
 title: 'Enum 톺아보기(2)'
-date: 2024-05-19T16:51:32+09:00
+date: 2024-01-20T16:51:32+09:00
 draft: false
-cover:
-    image: /img/kotlin.png
 tags: ["kotlin"]
 categories: ["development"]
 ---
