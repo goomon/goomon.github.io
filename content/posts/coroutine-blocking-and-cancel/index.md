@@ -29,6 +29,8 @@ categories: ["development"]
 `coroutineScope`는 코루틴 스코프(코루틴 스코프 = 코루틴으로 이해해도 크게 문제 없다) 없이 자체적으로 코루틴을 만들 수 있는 코루핕 스코프 함수다.
 보통 중단함수 내부에 코루틴을 생성해야 할 때 `coroutineScope` 블록을 정의해서 코루틴 빌더를 사용하게 된다.
 
+![coroutineScope](coroutineScope.png "50rem")
+
 `coroutineScope`의 특징을 나열해 보면;
 
 * `coroutineScope`는 중단함수이면서 새로운 코루틴을 생성하는 함수다. 부모 코루틴의 컨텍스트를 받아 새로운 스코프를 만들며 내부의 코루틴이 완료될 때까지 부모 코루틴을 중단한다.
