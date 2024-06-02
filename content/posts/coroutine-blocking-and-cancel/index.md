@@ -1,5 +1,5 @@
 ---
-title: 중단점이 있어야 취소가 가능하다
+title: 중단점이 있어야 취소가 가능하다 (withTimeout 올바르게 사용하기)
 date: 2024-06-02T12:59:17+09:00
 draft: false
 tags: ["kotlin", "coroutine"]
@@ -89,15 +89,7 @@ suspend fun fetchConfigurationData(): String {
 
 `loadConfiguration`을 두 가지 버전으로 만들어서 실행해보자.
 ```Kotlin
-// option 1 (1초 소요)
-suspend fun loadConfiguration() {
-    val data = coroutineScope {
-        fetchConfigurationData()
-    }
-    println("loaded: $data")
-}
-
-// option 2 (10초 소요)
+// option 1 (10초 소요)
 suspend fun loadConfiguration() {
     val data = runBlocking {
         fetchConfigurationData()
@@ -106,11 +98,22 @@ suspend fun loadConfiguration() {
 }
 ```
 
-`launch`를 이용해 만든 10개의 코루틴 내부에서 한 쪽은 `runBlocking`으로 한 쪽은 `coroutineScope`로 감쌌다. 
-디스패처의 동시성 옵션을 1로 세팅했기 때문에 동시에 실행할 수 있는 스레드는 1개이다.
+`runBlocking`으로 감싼 옵션 1의 경우는 총 10초가 소요된다. 
+동시에 사용할 수 있는 스레드가 1개 고정된 상황에서 `launch` 블록에서 스레드를 블록킹시키는 `runBlocking`을 호출하고 있기 때문이다.
+10개의 코루틴이 동시에 실행되길 원하지만 동기적으로 실행된다. 실제로 중단 함수 내부에서 `runBlocking`을 사용하는 것은 공식문서에서도 지양하는 안티패턴 중 하나이다.
 
-`runBlocking`으로 감싼 옵션 1의 경우는 총 10초가 소요되지만 `coroutineScope`로 감싼 옵션 2의 경우는 1초가 약간 넘는 시간이 소요된다.
-`runBlocking`은 `delay(1000)`가 끝날때 까지 스레드를 블록시킨 반면 `coroutineScope`는 `delay(1000)`이 끝날때까지 기다리기 때문에 스레드가 다른 코루틴을 실행하는 것이 가능하다.
+```Kotlin
+// option 2 (1초 소요)
+suspend fun loadConfiguration() {
+    val data = coroutineScope {
+        fetchConfigurationData()
+    }
+    println("loaded: $data")
+}
+```
+
+`coroutineScope`로 감싼 옵션 2의 경우는 1초가 약간 넘는 시간이 소요된다.
+`runBlocking`은 `delay(1000)`가 끝날때 까지 스레드를 블록시킨 반면 `coroutineScope`는 `delay(1000)`이 끝날때까지 코루틴을 기다리기 때문에 스레드가 다른 코루틴을 실행하는 것이 가능하다.
 
 # 취소와 중단함수
 
@@ -118,17 +121,28 @@ suspend fun loadConfiguration() {
 코루틴은 구조화된 동시성(structured concurrency)을 지원하여 코루틴의 잡(Job)에 위계를 설정하여 생명주기를 관리한다.
 취소도 그 중 하나로 코루틴에서는 `CancellationException` 타입의 예외가 발생할 경우 자식 코루틴을 비롯해서 부모 코루틴까지 취소를 전파한다.
 
-하지만 취소가 동작하기 위해서는 코루틴 사이에 중단점이 존재해야 하는데, 
+**하지만 취소가 동작하기 위해서는 코루틴 사이에 중단점이 존재해야 한다.** 
 중단점에 도달해서 다음 단계를 실행할지 판단하는 과정에서 잡을 취소시키고 종료해야 하는지 판단하기 위해서이다.
 코루틴이 취소되기 위해서는 중단점이 꼭 필요하다.
 
 ## 코루틴에서 Blocking I/O 사용하기
 
+코루틴 블록 내부에 DB 커넥션을 생성하거나 클라이언트를 이용해서 서버에 요청을 보내는 작업을 비동기로 쉽게 처리할 수 있다.
+하지만 위에서 언급했듯 블록킹 I/O와 중단의 차이를 구분하지 못하는 과정에서 코루틴이 의도하지 않은 방식으로 동작할 수 있다.
+특히 `withTimeout`을 이용해서 timeout을 설정해서 내부에서 처리되는 Blocking I/O를 조절하는 과정에서 timeout이 제대로 작동하지 않는 문제가 발생할 수 있다. 
 
+### withTimeout은 어떻게 작동할까?
 
-## withTimeout은 어떻게 작동할까?
+`withTimeout`은 `coroutineScope` 계열의 코루틴 스코프 함수이다. 
+`coroutineScope(EmptyCoroutineContext)`로 만든 코루틴에 시간 제한을 설정했다고 이해해도 무방하다.
 
-## withTimeout 올바르게 사용하기
+`withTimeout`는 설정한 시간을 넘길 경우 `TimeoutCancellationException`을 던저 연관된 코루틴을 취소시키는 특징을 가지고 있다.
+
+### withTimeout 올바르게 사용하기
+
+코루틴 내부의 Blocking I/O가 중단 지점이 있는지 확인해야 한다. 
+중단점 없이 연속적으로 클라이언트를 호출할 경우 timeout을 설정한들 아무런 소용이 없다.
+중단 지점에서 코루틴을 재개할지 취소할지를 판단하기 때문에 중단 지점이 없이 코루틴을 만들 경우 타임아웃이 발생해도 코루틴을 취소시킬 수 없다.
 
 # References
 
