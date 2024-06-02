@@ -8,22 +8,22 @@ categories: ["development"]
 
 # _class 대체 왜 사용하는 것일까?
 
-spring-data-mongo를 사용하다보면 은연중에 _class가 도큐먼트에 등록되는 상황을 심심치않게 볼 수 있다. 이는 MongDB가 가지는 스키마리스의 성질을 보완하고자 spring-data-mongo에서 기본적으로 사용하는 옵션이다.
+spring-data-mongo를 사용하다보면 은연중에 `_class`가 도큐먼트에 등록되는 상황을 심심치않게 볼 수 있다. 이는 MongDB가 가지는 스키마리스의 성질을 보완하고자 spring-data-mongo에서 기본적으로 의도적으로 등록하는 필드 값이다.
 
-_class 필드는 ORM 매핑시 다형성을 활용하여 객체를 도큐먼트와 매핑하는 상황에서 사용된다. 먼저 다형성을 이용해서 도큐먼트를 매핑(설계)한다는 의미부터 집고 넘어가자.
+`_class` 필드는 ORM 매핑시 다형성을 활용하여 도큐먼트를 객체(POJO)와 매핑하는 상황에서 사용된다. 먼저 다형성을 이용해서 도큐먼트를 매핑(설계)한다는 의미부터 짚고 넘어가자.
 
 ## 도큐먼트와 다형성
-다형성(polymorphism)은 프로그램 언어에서 한 객체가 여러 타입의 형태로 사용할 수 있는 경우를 의미하는데, 이를 활용하면 특정 인터페이스를 상속받은 다양한 객체를 하나의 컬렉션에 저장하는 것이 가능하다.
+다형성(polymorphism)은 프로그래밍 언어에서 한 객체가 여러 타입의 형태로 사용할 수 있는 경우를 의미하는데, 이를 활용하면 특정 인터페이스를 상속받은 여러 객체를 하나의 컬렉션에 저장하는 것이 가능하다.
 
 ![document-non-poly](document-non-poly.png "20rem")
 
-하지만 위의 그림은 다형성을 적용한 형태가 아니다. 다형성을 적용했다는 것은 하나의 컬렉션(collection)에 서로다른 타입(하지만 같은 인터페이스)이 들어가는 경우다. 위의 UML은 Bus와 Truck이 따로따로 컬렉션으로 분리되어 저장된다.
+하지만 위의 그림은 다형성을 적용한 형태가 아니다. 다형성을 적용했다는 것은 하나의 컬렉션(collection)에 서로 다른 타입(하지만 같은 인터페이스)이 포함되는 경우다. 위의 UML은 `Bus`와 `Truck`이 따로따로 컬렉션으로 분리되어 저장된다.
 
 ![img.png](documnet-poly.png)
 
-위와 같은 형태가 MongoDB를 사용하면서 다형성 기반으로 컬렉션을 정의한 순간이라고 할 수 있다. Convertible 객체는 필드값으로 engine을 가지며 이를 상속하는 서로 다른 3개의 내부 문서(sub-document)가 존재하게 되는것이다. 
+위와 같은 형태가 MongoDB를 사용하면서 다형성을 기반으로 컬렉션을 정의한 상황이라고 할 수 있다. `Convertible` 객체는 필드값으로 `engine`을 가지며 이를 상속하는 서로 다른 3개의 내부 문서(sub-document)가 존재하게 되는것이다. 
 
-하나의 컬렉션을 사용해서 이러한 추상화가 가능하지만 저장된 문서를 불러오는 과정에서는 engine에 해당하는 원래의 타입이 무엇이었는지 매핑시 추가 정보가 필요하다. 이 과정에서 spring-mongo-jpa는 _class라는 메타 정보를 도큐먼트와 같이 저장하게 된다.
+하나의 컬렉션에 여러 타입의 객체를 한 번에 저장할 수 있다는 장점이 있지만, 저장된 문서를 불러오는 과정에서는 `engine`에 해당하는 원래의 구상 타입(concrete type)이 무엇이었는지 변환과정에서 추가 정보가 필요하다. spring-mongo-jpa는 이러한 매핑 상황에서 활용하기 위해 구상 클래스의 전체 경로를 `_class`에 담아 도큐먼트와 같이 저장시킨다.
 
 ```json
 {
@@ -37,11 +37,11 @@ _class 필드는 ORM 매핑시 다형성을 활용하여 객체를 도큐먼트�
 }
 ```
 
-위와 같은 형태로 문서 JSON에 해당 문서를 매핑할 FQN(fully qualified name)이 들어가게 된다.
+JSON을 객체로 변환할 때 `_class`를 참고해서 매핑할 클래스를 찾게 된다.
 
 ## MongoTemplate Mapping Process
 
-spring-data-mongo가 _class를 어떻게 사용하는지 자세히 알기위해서 Java 환경에서 사용하는 MongoTemplate이 문서를 객체로 매핑하는 과정을 살펴보자.
+spring-data-mongo가 `_class`를 어떻게 사용하는지 이해하기 위해서 `MongoTemplate`이 문서를 객체로 매핑하는 과정을 살펴보자.
 
 ```mermaid
 sequenceDiagram
@@ -63,9 +63,9 @@ sequenceDiagram
 
 도큐먼트를 읽어와 타입으로 변환하는 과정에서 가장 중요한 것은 **해당 도큐먼트가 어떤 타입과 매핑되는지 결정**하는 것이다.
 
-하지만 디버깅 모드로 몇 번만 돌려보면 _class 필드의 유무와 상관없이 typeHint에 클래스 경로에대한 정보가 사저에 들어있는 것을 확인할 수 있다. 즉 다형성을 사용하지 않는 일반적인 경우라면 _class 없이 객체를 매핑하는데 전혀 문제가 없다. **도큐먼트가 영속성 객체과 관리되는 과정에서 이미 MongoTemplate은 해당 도큐먼트의 클래스 패스를 알고 있는 것**이다.
+하지만 디버깅 모드로 몇 번만 돌려보면 `_class` 필드의 유무와 상관없이 `typeHint`에 클래스 경로에 대한 정보가 사전에 들어 있는 것을 확인할 수 있다. 즉 다형성을 사용하지 않는 일반적인 경우라면 `_class` 없이도 영속성 객체에 저장된 정보만으로 객체를 매핑하는데 전혀 문제가 없다. **도큐먼트가 영속성 객체로 관리되는 상황에서 이미 `MongoTemplate`은 도큐먼트의 기본 클래스 패스를 알고 있기 때문**이다.
 
-하지만 만약 도큐먼트에 등록된 클래스 정보가 추상 클래스 혹은 인터페이스일 경우에는 어떻게 될까? 클래스를 단독으로 정상적으로 만들 수 없기 때문에 적절한 타입을 찾는 과정이 필요하고 이를 spring-data-mongo에서는 _class를 기본값으로 사용하는 것이다.
+하지만 만약 도큐먼트에 등록된 클래스 정보가 추상클래스(abstract class) 혹은 인터페이스일 경우에는 어떻게 될까? 정상적으로 클래스를 만들 수 없기 때문에 적절한 구체 타입을 찾는 과정이 필요하고 spring-data-mongo에서는 `_class`를 참고하게 된다.
 
 ### 절절한 도큐먼트 타입찾기 - DefaultTypeMapper.java
 
@@ -117,7 +117,7 @@ public <T> TypeInformation<? extends T> readType(S source, TypeInformation<T> ba
 }
 ```
 
-아무런 설정 없이 spring-data-mongo를 사용하게 되면 DefaultMongoTypeMapper를 기본 매핑 클래스로 사용하게 된다.
+아무런 설정 없이 spring-data-mongo를 사용하게 되면 `DefaultMongoTypeMapper`를 기본 매핑 클래스로 사용하게 된다.
 
 ```Java
 // DefaultTypeMapper.java
@@ -131,15 +131,15 @@ private Class<?> getDefaultedTypeToBeUsed(S source) {
 		return documentsTargetTypeInformation == null ? null : documentsTargetTypeInformation.getType();
 }
 ```
-- documentsTargetTypeInformation에 들어갈 적절한 타입을 찾지 못하면 java.util.Map이 들어간다.
-- 결국 구체화된 타입을 가져오지 못했기 때문에 이 값은 typeHint에서 제공한 값을 참조하여 인스턴스로 변환을 시도한다.
-- 하지만 만약 기본 베이스 클래스(typeHint)가 인터페이스나 추상 클래스일 경우 인스턴스를 생성하는 당연히 문제가 발생하게 된다.
+- `documentsTargetTypeInformation`에 들어갈 적절한 타입을 찾지 못하면 `java.util.Map`이 들어간다.
+- 결국 구체 타입을 가져오지 못했기 때문에 이 값은 `typeHint`에서 제공한 값을 참조하여 인스턴스로 변환을 시도한다.
+- 하지만 만약 기본 베이스 클래스(`typeHint`)가 인터페이스나 추상 클래스일 경우 인스턴스를 생성하는 문제가 발생한다.
 
 {{</ collapse >}}
 
 ### 절절한 도큐먼트 타입찾기 - TypeAlias vs FQN
 
-구체적으로 타입을 가져오는 과정을 이해하기 위해서 readType을 살펴보자. 이 과정에서 약어(alias)를 바탕으로 타입을 읽어올지 _class 값을 그대로 사용하여 값을 읽어올지 결정하게 된다.
+타입을 가져오는 과정을 이해하기 위해서 `readType`을 살펴보자. 이 과정에서 약어(alias)를 바탕으로 타입을 찾올지 `_class` 값을 그대로 사용하여 값을 찾을지 결정하게 된다.
 
 ```Java
 @Nullable
@@ -160,14 +160,14 @@ private TypeInformation<?> getFromCacheOrCreate(Alias alias) {
 }
 ```
 
-약어를 바탕으로 타입을 찾기 위해 DefaultTypeMapper.java에서 2가지 중요 값을 가지고 있다.
+약어를 바탕으로 타입을 찾기 위해 `DefaultTypeMapper.java`에서 2가지 중요 값을 가지고 있다.
 
 | 프로퍼티 | 설명 |
 | --- | --- |
 | getAlias | 람다로 alias 값을 가져오기위한 로직이 정의되어 있다. |
 | typaCache | alias된 데이터를 캐싱하여 가지고 있는 맵 형태의 값이다. |
 
-생성자에서 정의되는 getAlias 람다는 아래와 같다.
+생성자에서 정의되는 `getAlias` 람다는 아래와 같다.
 
 ```java
 this.getAlias = key -> {
@@ -181,7 +181,7 @@ this.getAlias = key -> {
 };
 ```
 
-mapper 리스트를 순회하면서 타입을 찾게 된다. 먼저 alias 기반으로 타입을 탐색한다.
+`mapper` 리스트를 순회하면서 타입을 찾게 된다. 먼저 약어 기반으로 타입을 탐색한다.
 
 ```java
 public TypeInformation<?> resolveTypeFrom(Alias alias) {
@@ -196,7 +196,7 @@ public TypeInformation<?> resolveTypeFrom(Alias alias) {
 }
 ```
 
-이 과정에서 타입을 찾지 못한다면 _class 이름을 기반으로 타입을 찾게 된다.
+이 과정에서 타입을 찾지 못한다면 `_class` 이름을 기반으로 타입을 찾게 된다.
 
 ```java
 public TypeInformation<?> resolveTypeFrom(Alias alias) {
@@ -210,7 +210,7 @@ public TypeInformation<?> resolveTypeFrom(Alias alias) {
 
 ### 인스턴스 생성하기 - MappingMongoConverter.java
 
-지금까지의 상황은 typeHint로 가져오는 타입 이외에 구체적인 타입을 잘못된 경로로 인해서 찾지 못한 상황이 되었다. 이 상황에서 **컨버터는 결국 추상 클래스 기반으로 인스턴스 생성을 시도하게 되고 에러가 발생**한다.
+만약 `_class`를 이용해서 구체 타입을 결정하지 못할 경우 `typeHint`를 통해 알고 있는 타입을 그대로 사용하게 된다. 만약 타입 힌트를 통해 가져온 타입 정보가 정상적인 구체 클래스가 아니라면 **컨버터는 결국 추상 클래스 기반으로 인스턴스 생성을 시도하게 되고 에러가 발생**한다.
 
 ```java
 private <S extends Object> S read(ConversionContext context, MongoPersistentEntity<S> entity, Document bson) {
@@ -223,7 +223,7 @@ private <S extends Object> S read(ConversionContext context, MongoPersistentEnti
 }
 ```
 
-내부적으로 조금만 더 들어가면
+내부적으로 조금만 더 들어가 보자.
 
 ```java
 public <T, E extends PersistentEntity<? extends T, P>, P extends PersistentProperty<P>> T createInstance(E entity,
@@ -236,17 +236,48 @@ public <T, E extends PersistentEntity<? extends T, P>, P extends PersistentPrope
 }
 ```
 
-재미있는 사실은 instantiator의 경우 도큐먼트와 연관된 모든 클래스 정보를 해시맵으로 저장하고 있다는 사실이다.
+재미있는 사실은 `instantiator`의 경우 도큐먼트와 연관된 모든 클래스 정보를 해시맵으로 저장하고 있다는 사실이다.
 
 ### 정리
 
 1. 기본 타입을 가져온다.
     - 여기서 기본 타입이란 약어(alias)로 등록된 클래스 정보가 등록되어 있는지 확인하는 과정이다.
-    - 약어 정보는 entity로 등록된 데이터를 바탕으로 가져온다. (캐싱이 적용될 경우 entity 등록정보 없이 매핑 정보가 저장된다.)
-    - TypeAlias 정보는 캐싱을 이용해 내부적으로 변환 클래스를 맵 형태로 저장한다.
-    - TypeAlias를 사용하지 않은 경우는 SimpleTypeInformationMapper에 의해 _class 이름 그대로 매핑된다.
-2. 기본타입이 null이라면 basicType을 타입으로 설정한다.
-    - 만약 basicType이 abstract class 혹은 interface일 경우 후에 인스턴스 생성에서 문제가 생긴다.
-3. 구체화된 타입이 있는지 확인한다. 마찬가지로 구체화된 타입이 없다면 basicType을 기본 타입으로 설정한다.
+    - 약어 정보는 엔터티(entity)로 등록된 데이터를 바탕으로 가져온다. (캐싱이 적용될 경우 entity 등록정보 없이 매핑 정보가 저장된다.)
+    - `TypeAlias` 정보는 캐싱을 이용해 내부적으로 변환 클래스를 맵 형태로 저장한다.
+    - `TypeAlias`를 사용하지 않은 경우는 `SimpleTypeInformationMapper`에 의해 `_class` 이름 그대로 매핑된다.
+2. 기본타입이 null이라면 `basicType`을 타입으로 설정한다.
+    - 만약 `basicType`이 abstract class 혹은 interface일 경우 후에 인스턴스 생성에서 문제가 생긴다.
+3. 구체화된 타입이 있는지 확인한다. 마찬가지로 구체화된 타입이 없다면 `basicType`을 기본 타입으로 설정한다.
 
 # 어떻게 관리하는게 좋을까?
+
+이 뒷부분 부터는 필자의 개인적인 생각이다.
+
+### 1. _class를 사용하지 말자.
+
+MongoDB를 사용하기위해 설정하는 옵션 중에서 기본 타입을 null로 세팅하면 `_class`를 사용하지 않게 된다. `_class`를 사용하게 되면 엔터티의 경로 변경에서 자유로울 수 없기 때문에 리팩토링 과정에서 서로다른 FQN이 하나의 컬렉션에 존재하는 골치아픈 상황이 발생할 수 있다. 또한 `_class`가 굳이 필요없는 상황에서 불필요한 디스크를 잡아먹는 주요 요인이 될 수 있다.
+
+```Kotlin
+@Bean
+fun mappingMongoConverter(
+    mongoDbFactory: MongoDatabaseFactory,
+    mongoMappingContext: MongoMappingContext,
+    mongoCustomConversions: MongoCustomConversions,
+): MappingMongoConverter? {
+    val dbRefResolver: DbRefResolver = DefaultDbRefResolver(mongoDbFactory)
+    val converter = MappingMongoConverter(dbRefResolver, mongoMappingContext)
+
+    converter.setCustomConversions(mongoCustomConversions)
+    converter.setTypeMapper(DefaultMongoTypeMapper(null))
+
+    return converter
+}
+```
+
+단, 이 방법은 MongoDB에 다형성을 바탕으로한 문서를 저장할 경우 커스텀 컨버터를 만들어 객체로 변환하는 추가적인 작업이 필요할 수 있다는 단점이 있다. 
+
+### 2. 이미 _class를 사용했다면 TypeAlias 전략을 고민해 보자.
+
+이미 `_class`를 사용하고 있는 경우라면 `@TypeAlias`의 사용을 진지하게 고민해볼 필요도 있다. 보통은 도큐먼트 클래스 이름으로 설정해서 사용해서 FQN 대신 약어가 저장되도록 설정할 수 있다.
+
+하지만 이 방법 또한 이미 `@TypeAlias`를 고정시킨 경우라면 후에 바꾸는 것이 쉽지 않을 수 있다. 되도록이면 깔끔하게 구체 클래스를 사용해서 MongoDB를 사용하는 것이 부수효과를 줄이고 운영상에서의 리팩토링의 리스크를 줄일 수 있는 방법이지 않을까 생각된다.
