@@ -17,7 +17,7 @@ params:
 
   ShowBreadCrumbs: true
   ShowReadingTime: true
-  ShowShareButtons: true
+  ShowShareButtons: false
   ShowPostNavLinks: true
   ShowToc: true
 
