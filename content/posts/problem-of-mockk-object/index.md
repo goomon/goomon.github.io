@@ -75,20 +75,105 @@ mockkObject 메서드를 실행하면 SpyKStub이 생성되고 cancellation 람�
        .cancel(it)
     ```
    
-mockkObject로 생성된 목 객체가 전역적인 StubRepository 내부에서 전역적으로 관리된다는 사실을 알 수 있습니다.
+mockkObject로 생성된 목 객체가 전역적인 StubRepository {{<color color="#FB6F92" text="내부에서 전역적으로 관리된다는 사실을 알 수 있습니다.">}}
 싱글톤인 object class의 특징상 전역적으로 목 객체를 관리하는 것이 뭐가 문제냐고 되물을 수 있겠지만, 
 목 객체를 만든다는 것은 테스트 내부에서 제한적으로 사용하겠다는 의미를 가지기도 합니다.
 테스트 환경을 위해서 만든 객체가 전역적으로 관리된다는 점이 의아할 수 밖에 없는 상황입니다.
 
-### 일반 object 객체와 목 객체를 어떻게 구분할 수 있을까?
+### (참고) 일반 object 객체와 목 객체를 어떻게 구분할 수 있을까?
+여기서 잠깐 궁금증이 드는 부분은 테스트 실행시 실행 환경에서 접근한 객체가 목 객체인지 원래 객체인지 어떻게 알 수 있을까 인데요.
+object class의 경우 똑같이 싱글톤 클래스의 레퍼런스를 참조할텐데 어디서 이를 구분할 수 있는지 확인해 봅시다.
 
+코드를 추적하다보면 mockk에서는 어드바이스를 등록해서 객체에 접근할 때 프록시 핸들러가 존재하는지 확인후, 인터셉터를 이용해서 stub(목 객체)이 결과로 나오도록 처리한다는 것을 알 수 있습니다.
+
+```Java
+// JvmMockKProxyAdive.java
+public class JvmMockKProxyAdvice extends BaseAdvice {
+   @OnMethodEnter(skipOn = OnNonDefaultValue.calss)
+   private static Callable<?> enter(...)
+}
+```
+
+mockk에서 어드바이스가 동작하는 과정을 자세하게 살펴보겠습니다.
+
+1. JvmMockDispatcher에서 적절한 JvmMockDispatcher를 가져옵니다.
+   ```Java
+   // JvmMockKDispatcher.java
+   public class JvmMockKDispatcher get(long id, Object obj) {
+      if (obj == DISPATCHER_MAP) {
+         return null;
+      }
+      return DIPATCHER_MAP.get(id);
+   }
+   ```
+2. 추출한 디스패처의 핸들러를 동작시킵니다.
+   ```Java
+   // JvmMockKProxyAdvie.java - enter()
+   JvmMockKDispacher  dispatcher = JvmMockKDispatcher.get(id, self);
+   
+   if (dispatcher == null || !dispatcher.isMock(self)) {
+      return null;
+   }
+   
+   return dispatcher.handler(self, method, arguments);
+   ```
+3. 핸들러가 실행되면 인터셉터가 호출되어 목 객체를 반환합니다.
+   ```Kotlin
+   // BaseAdvice.java - handler()
+   fun handler(self: Any, method: Method, arguments: Array<Any?>): Callable<*>? {
+      val handler - handlers[self] ?: return null
+      
+      retrn if (SelfCallEliminator.isSelf(self, method) {
+         null
+      } else {
+         Intercaptor(handler, self, method, arguments)
+      }
+   }
+   ```
+4. 이때 인터셉터는 목 객체의 존재 여부에 따라 원본 객체를 반환할지 stub을 호출할지 결정합니다.
+   ```Kotlin
+   // Intercpetor.kt - call()
+   fun call(): Any? {
+      val callOriginalMethod = SelfCallEliminatorCallable(
+         MethodCall(self, method, arguments),
+         self,
+         method
+      )
+      return handler.invocation(self, method, callOriginalMethod, arguments)
+         ?.boxedValue // unbox value calss objects
+   }
+   ```
+   JvmMockFactoryHelper의 invocation 메서드를 호출합니다.
+
+   ```Kotlin
+   // JvmMockFactoryHelper.kt - invocation()
+   object JvmMockFactoryHelper {
+      fun mockHandler(stub: Stub) = object : MockKInvocationHandler {
+         override fun invocation(self: Any, method: Method?, originalCall: Callble<*>?, args: Array<Any?>) =
+            stdFunctions(self, method!!, args) {
+               stub.handlerInvocation(
+                  self,
+                  method.toDescription(),
+                  {
+                     handlerOriginalCall(originalCall, method)
+                  },
+                  args,
+                  findBanckingField(slef, method)
+               )
+            }
+      }
+   }
+   ```
+
+구성이 복잡하니 다이어그램으로 나타낸다면 아래와 같습니다. 
+다이어그램을 살펴보면 전형적인 프록시 패턴으로 구현된 reflect 패키지와 유사한 구조를 가진다는 것을 알 수 있습니다.
 ![mockkObject flow](mockkObject_flow.png "40rem")
 
 ## mockkObject와 동시성 이슈
 
-![img_1.png](critical1.png)
+![critical1](critical1.png)
 
-![img_2.png](critical2.png)
+![critical1](critical2.png)
 
 ## 개선 방향
 
